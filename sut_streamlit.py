@@ -26,12 +26,33 @@ st.markdown("""
         border-radius: 10px;
         margin-bottom: 2rem;
     }
-    /* Diğer stiller aynı kalacak */
+    .result-box {
+        background-color: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 10px;
+        border-left: 5px solid #667eea;
+    }
+    .total-box {
+        background-color: #28a745; /* Stronger green */
+        color: white; /* White text for contrast */
+        padding: 1.5rem; /* More padding */
+        border-radius: 10px;
+        font-size: 1.75rem; /* Significantly larger font */
+        font-weight: 700; /* Bolder */
+        text-align: center; /* Centered text */
+        margin-top: 1rem; /* Add some space above */
+    }
+    .error-box {
+        background-color: #f8d7da;
+        padding: 1rem;
+        border-radius: 10px;
+        border-left: 5px solid #dc3545;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# YENİ SENARYOYA GÖRE GÜNCELLENMİŞ FONKSİYONLAR
+# GÜNCELLENMİŞ FONKSİYONLAR
 # ==============================================================================
 
 def clean_col_names(df, file_identifier):
@@ -51,8 +72,9 @@ def clean_col_names(df, file_identifier):
 @st.cache_data
 def load_dataframes():
     """Loads all SUT Excel files into pandas DataFrames."""
-    desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-    sut_dir_path = os.path.join(desktop_path, "SUT Kuralları")
+    # Excel dosyalarinin scriptin bulundugu dizindeki 'SUT Kurallari' klasorunden yuklenmesi
+    script_dir = os.path.dirname(__file__)
+    sut_dir_path = os.path.join(script_dir, "SUT Kuralları")
 
     paths = {
         "ek2a": os.path.join(sut_dir_path, "EK-2A AYAKTAN BAŞVURULARDA ÖDEME LİSTESİ (Yür.11.05.2024).xlsx"),
@@ -121,7 +143,9 @@ def get_prices(sut_codes_list, dataframes):
                     results[code], details[code] = "Kod EK-2A'da bulunamadi", "Hata"
         else: # Trigger olmayan hizmetler
             if is_package_active:
-                if code in ek2a2_codes_set:
+                # Kural: EK-2A-2'de degilse VE 'R' ile baslamiyorsa ucretsiz.
+                # Yani, EK-2A-2'de ise VEYA 'R' ile basliyorsa ucretli.
+                if code in ek2a2_codes_set or code.startswith('R'): # <<< BURASI GUNCELLEDIK
                     price_row_b = df_ek2b[df_ek2b['SUT KODU'] == code]
                     if not price_row_b.empty:
                         puan = pd.to_numeric(price_row_b['Puan'].iloc[0], errors='coerce')
@@ -149,23 +173,38 @@ st.markdown('<div class="main-header">🏥 SUT Fiyat Hesaplayıcı</div>', unsaf
 # ... (kalan UI kodu öncekiyle aynı)
 with st.sidebar:
     st.header("📋 Bilgilendirme")
-    st.info("v3.0 - Son Senaryo Uyumlu")
+    st.info("**v3.1 - 'R' Kodları ve Dosya Yolu Güncellendi**")
     st.info("""
     **Kullanım:**
     1. SUT kodlarını girin (her satıra bir kod)
     2. "Fiyatları Hesapla" butonuna tıklayın
     3. Sonuçları görüntüleyin
+
+    **Özellikler:**
+    - EK-2A, EK-2A-2, EK-2B, EK-2C kontrolü
+    - Otomatik KDV hesaplama
+    - Kapsamlı paket fiyatlandırması
+    - Toplam tutar hesaplama
+    - 'R' ile başlayan kodlar her zaman EK-2B'den fiyatlanır.
     """)
+
     st.header("⚙️ Ayarlar")
     show_details = st.checkbox("Detaylı açıklamaları göster", value=True)
+
     st.markdown("---")
-    st.caption("Desktop/SUT Kuralları klasöründen veri çekiyor")
+    st.caption("Excel dosyalarını artık projenizin içindeki 'SUT Kuralları' klasöründen okuyor.")
 
 with st.spinner("📂 Veriler yükleniyor..."):
     dataframes, error = load_dataframes()
 
 if error:
     st.error(f"❌ **Hata:** {error}")
+    st.warning("""
+    **Lütfen kontrol edin:**
+    - Streamlit uygulamasının olduğu klasörde "SUT Kuralları" klasörü var mı?
+    - Excel dosyaları doğru isimde mi?
+    - Dosyalar okunabilir mi?
+    """)
     st.stop()
 else:
     st.success("✅ Veriler başarıyla yüklendi!")
@@ -173,7 +212,7 @@ else:
 col1, col2 = st.columns([1, 1])
 with col1:
     st.subheader("📝 SUT Kodları Girişi")
-    kod_input = st.text_area("Her satıra bir SUT kodu yazın:", height=300, placeholder="1000 (Branş Kodu)\n700050 (İstisna)\n801170 (Pakete Dahil Olacak)")
+    kod_input = st.text_area("Her satıra bir SUT kodu yazın:", height=300, placeholder="1000 (Branş Kodu)\nL101850\nR100010 (Her zaman fiyatlanır)")
     hesapla_btn = st.button("💰 Fiyatları Hesapla", type="primary", use_container_width=True)
 
 with col2:
@@ -208,4 +247,4 @@ with col2:
     else:
         st.info("👈 Sol taraftan SUT kodlarını girin ve 'Fiyatları Hesapla' butonuna tıklayın")
 st.markdown("---")
-st.caption("SUT Fiyat Hesaplayıcı v3.0 | Son Senaryo Entegre Edildi")
+st.caption("SUT Fiyat Hesaplayıcı v3.1 | 'R' Kodları ve Dosya Yolu Güncellendi")
