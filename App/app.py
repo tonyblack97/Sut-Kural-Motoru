@@ -10,11 +10,16 @@ import re
 
 from sut_nlp import get_nlp_implied_codes
 from sut_cleaner import clean_all_files, preview_all_files
+from services import get_prices
+
+# Sabitler (Sadece arayüzde göstermek için. Asıl hesaplama services.py içinde)
+KDV_ORANI = 1.10
+PUAN_KATSAYISI = 0.593
+
 
 # ... (mevcut sabitler ve CSS aynı) ...
 
-KDV_ORANI = 1.10
-PUAN_KATSAYISI = 0.593
+
 
 st.set_page_config(
     page_title="SUT Fiyat Hesaplayıcı",
@@ -190,112 +195,7 @@ def load_dataframes():
 # FİYAT HESAPLAMA (Mevcut kod aynı)
 # ==============================================================================
 
-def get_prices(sut_codes_list, dataframes):
-    """Verilen SUT kodları için fiyatları hesaplar."""
-    if dataframes is None:
-        return {"hata": "Veri setleri yüklenemedi."}, {}
 
-    df_ek2a = dataframes['ek2a']
-    df_ek2a2 = dataframes['ek2a2']
-    df_ek2b = dataframes['ek2b']
-    df_ek2c = dataframes['ek2c']
-    nlp_implied_codes = dataframes.get('nlp_implied_codes', set())
-
-    sut_codes_list = [str(code).strip() for code in sut_codes_list]
-
-    ek2a_codes_set = set(df_ek2a['SUT KODU'])
-    ek2a2_codes_set = set(df_ek2a2['SUT KODU'])
-
-    package_trigger_codes = {
-        code for code in sut_codes_list
-        if code in ek2a_codes_set or code.startswith('P')
-    }
-    is_package_active = bool(package_trigger_codes)
-
-    results, details = {}, {}
-
-    for code in sut_codes_list:
-        is_trigger = code in package_trigger_codes
-
-        if is_trigger:
-            if code.startswith('P'):
-                price_row_c = df_ek2c[df_ek2c['SUT KODU'] == code]
-                if not price_row_c.empty:
-                    puan = pd.to_numeric(price_row_c['Puan'].iloc[0], errors='coerce')
-                    if pd.notna(puan):
-                        results[code] = round(puan * PUAN_KATSAYISI * KDV_ORANI, 2)
-                        details[code] = f"EK-2C'den hesaplandı (Puan: {puan})"
-                    else:
-                        results[code] = "Puan (EK-2C) bulunamadı"
-                        details[code] = "Hata"
-                else:
-                    price_row_a = df_ek2a[df_ek2a['SUT KODU'] == code]
-                    if not price_row_a.empty:
-                        base_price = pd.to_numeric(price_row_a['Fiyat'].iloc[0], errors='coerce')
-                        if pd.notna(base_price):
-                            results[code] = round(base_price * KDV_ORANI, 2)
-                            details[code] = "EK-2A'dan hesaplandı (P kodu)"
-                        else:
-                            results[code] = "Fiyat (EK-2A) bulunamadı"
-                            details[code] = "Hata"
-                    else:
-                        results[code] = "P Kodu bulunamadı"
-                        details[code] = "Hata"
-            else:
-                price_row_a = df_ek2a[df_ek2a['SUT KODU'] == code]
-                if not price_row_a.empty:
-                    base_price = pd.to_numeric(price_row_a['Fiyat'].iloc[0], errors='coerce')
-                    if pd.notna(base_price):
-                        results[code] = round(base_price * KDV_ORANI, 2)
-                        details[code] = "EK-2A'dan hesaplandı (Branş Paketi)"
-                    else:
-                        results[code] = "Fiyat (EK-2A) bulunamadı"
-                        details[code] = "Hata"
-                else:
-                    results[code] = "Kod EK-2A'da bulunamadı"
-                    details[code] = "Hata"
-        else:
-            if is_package_active:
-                in_ek2a2 = code in ek2a2_codes_set
-                starts_with_r = code.startswith('R')
-                in_nlp = code in nlp_implied_codes
-
-                if in_ek2a2 or starts_with_r or in_nlp:
-                    price_row_b = df_ek2b[df_ek2b['SUT KODU'] == code]
-                    if not price_row_b.empty:
-                        puan = pd.to_numeric(price_row_b['Puan'].iloc[0], errors='coerce')
-                        if pd.notna(puan):
-                            results[code] = round(puan * PUAN_KATSAYISI * KDV_ORANI, 2)
-                            if in_nlp:
-                                details[code] = "EK-2B'den hesaplandı (NLP başlık eşleşmesi)"
-                            elif starts_with_r:
-                                details[code] = "EK-2B'den hesaplandı (R kodu)"
-                            else:
-                                details[code] = "EK-2B'den hesaplandı (EK-2A-2 listesi)"
-                        else:
-                            results[code] = "Puan (EK-2B) bulunamadı"
-                            details[code] = "Hata"
-                    else:
-                        results[code] = "Kod EK-2B'de bulunamadı"
-                        details[code] = "Hata"
-                else:
-                    results[code] = 0.0
-                    details[code] = "Pakete dahil (ücretsiz)"
-            else:
-                price_row_b = df_ek2b[df_ek2b['SUT KODU'] == code]
-                if not price_row_b.empty:
-                    puan = pd.to_numeric(price_row_b['Puan'].iloc[0], errors='coerce')
-                    if pd.notna(puan):
-                        results[code] = round(puan * PUAN_KATSAYISI * KDV_ORANI, 2)
-                        details[code] = "EK-2B'den hesaplandı (Standalone)"
-                    else:
-                        results[code] = "Puan (EK-2B) bulunamadı"
-                        details[code] = "Hata"
-                else:
-                    results[code] = "Kod EK-2B'de bulunamadı"
-                    details[code] = "Hata"
-
-    return results, details
 
 
 # ==============================================================================

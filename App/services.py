@@ -116,6 +116,10 @@ def get_prices(sut_codes_list, dataframes):
     # Kodları temizle
     sut_codes_list = [str(code).strip() for code in sut_codes_list]
 
+    # Kural motoru: Eğer belirli kritik kodlar varsa, paketi iptal et (EK-2B'den hesapla)
+    force_ek2b_codes = {'1070', '1053', '3200', '3400'}
+    force_ek2b_mode = any(code in force_ek2b_codes or code.startswith('C') for code in sut_codes_list)
+
     # Kod setlerini oluştur
     ek2a_codes_set = set(df_ek2a['SUT KODU'])
     ek2a2_codes_set = set(df_ek2a2['SUT KODU'])
@@ -125,7 +129,7 @@ def get_prices(sut_codes_list, dataframes):
         code for code in sut_codes_list
         if is_package_trigger(code, ek2a_codes_set)
     }
-    is_package_active = bool(package_trigger_codes)
+    is_package_active = bool(package_trigger_codes) and not force_ek2b_mode
 
     results, details = {}, {}
 
